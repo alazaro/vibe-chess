@@ -5,7 +5,7 @@ import { Chess } from 'chess.js';
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
-    origin: 'http://localhost:3000',
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
     methods: ['GET', 'POST'],
   },
 });
@@ -182,7 +182,7 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
   console.log(`Chess multiplayer server running on port ${PORT}`);
 });

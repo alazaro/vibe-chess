@@ -9,6 +9,8 @@
     "lint": "biome check",
     "format": "biome format --write",
     "server": "tsx server.ts",
+    "build:server": "tsc server.ts --outDir dist --esModuleInterop --resolveJsonModule --skipLibCheck",
+    "start:server": "node dist/server.js",
     "dev:all": "concurrently \"pnpm dev\" \"pnpm run server\""
   },
   "dependencies": {
