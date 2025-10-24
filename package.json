@@ -9,7 +9,7 @@
     "lint": "biome check",
     "format": "biome format --write",
     "server": "tsx server.ts",
-    "dev:all": "concurrently \"pnpm dev\" \"pnpm server\""
+    "dev:all": "concurrently \"pnpm dev\" \"pnpm run server\""
   },
   "dependencies": {
     "chess.js": "^1.4.0",

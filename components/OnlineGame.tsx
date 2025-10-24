@@ -20,6 +20,8 @@ export default function OnlineGame() {
     makeMove,
     updateGameFromFen,
     resetGame,
+    moveCounter,
+    lastLocalMove, // Get the last move made locally
   } = useGameStore();
 
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
@@ -28,7 +30,7 @@ export default function OnlineGame() {
     if (gameMode === 'online') {
       // Initialize socket connection
       if (!socket) {
-        socket = io('http://localhost:3001');
+        socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001');
 
         socket.on('connect', () => {
           setConnectionStatus('connected');
@@ -45,8 +47,9 @@ export default function OnlineGame() {
           resetGame();
         });
 
-        socket.on('moveMade', ({ fen }: { fen: string }) => {
-          updateGameFromFen(fen);
+        socket.on('moveMade', ({ fen, move }: { fen: string; move: string }) => {
+          console.log('Received move from server:', move, 'FEN:', fen);
+          updateGameFromFen(fen, move);
         });
 
         socket.on('gameOver', ({ reason }: { reason: string }) => {
@@ -85,20 +88,31 @@ export default function OnlineGame() {
 
   // Send moves to server when made locally
   useEffect(() => {
-    if (onlineGameId && socket) {
-      const moves = game.history({ verbose: true });
-      if (moves.length > 0) {
-        const lastMove = moves[moves.length - 1];
-        // Only send if it's our turn
-        if ((playerColor === 'w' && game.turn() === 'b') || (playerColor === 'b' && game.turn() === 'w')) {
-          socket.emit('makeMove', {
-            gameId: onlineGameId,
-            move: { from: lastMove.from, to: lastMove.to, promotion: lastMove.promotion },
-          });
-        }
-      }
+    console.log('Move effect triggered:', {
+      onlineGameId,
+      hasSocket: !!socket,
+      moveCounter,
+      playerColor,
+      currentTurn: game.turn(),
+      lastLocalMove
+    });
+
+    if (!onlineGameId || !socket || !playerColor) {
+      console.log('Skipping - missing required values');
+      return;
     }
-  }, [game.history().length]);
+
+    // Only send if we have a local move to send
+    if (lastLocalMove) {
+      console.log('✓ Sending move to server:', lastLocalMove);
+      socket.emit('makeMove', {
+        gameId: onlineGameId,
+        move: lastLocalMove,
+      });
+    } else {
+      console.log('✗ No local move to send (move was from server)');
+    }
+  }, [moveCounter]); // Trigger on moveCounter change
 
   if (connectionStatus === 'connecting') {
     return (

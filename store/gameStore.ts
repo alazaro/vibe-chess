@@ -34,6 +34,8 @@ interface GameState {
   playerColor: 'w' | 'b' | null;
   onlineGameId: string | null;
   isSearchingForMatch: boolean;
+  moveCounter: number; // Used to trigger effects when moves are made
+  lastLocalMove: { from: string; to: string; promotion?: string } | null; // Last move made locally
 
   // Actions
   setGameMode: (mode: GameMode) => void;
@@ -50,7 +52,7 @@ interface GameState {
   setPlayerColor: (color: 'w' | 'b' | null) => void;
   setOnlineGameId: (id: string | null) => void;
   setIsSearchingForMatch: (searching: boolean) => void;
-  updateGameFromFen: (fen: string) => void;
+  updateGameFromFen: (fen: string, moveNotation?: string) => void;
 }
 
 const createNewGame = () => new Chess();
@@ -80,6 +82,11 @@ const updateGameStatus = (game: Chess): string => {
 const buildMoveHistory = (game: Chess): MoveHistoryItem[] => {
   const history = game.history();
   const moveHistory: MoveHistoryItem[] = [];
+
+  // If history is empty (e.g., game created from FEN), return empty array
+  if (history.length === 0) {
+    return moveHistory;
+  }
 
   // Create a temporary game to track FENs
   const tempGame = new Chess();
@@ -132,6 +139,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   playerColor: null,
   onlineGameId: null,
   isSearchingForMatch: false,
+  moveCounter: 0,
+  lastLocalMove: null,
 
   // Actions
   setGameMode: (mode) => set({ gameMode: mode }),
@@ -141,7 +150,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   setAIDifficulty: (difficulty) => set({ aiDifficulty: difficulty }),
 
   makeMove: (from, to, promotion = 'q') => {
-    const { game } = get();
+    const { game, gameMode, playerColor } = get();
+
+    // In online mode, validate that the player can only move their own pieces
+    if (gameMode === 'online' && playerColor) {
+      const piece = game.get(from);
+      if (!piece || piece.color !== playerColor || game.turn() !== playerColor) {
+        console.log('Move rejected: not your piece or not your turn');
+        return false;
+      }
+    }
 
     try {
       const move = game.move({
@@ -152,7 +170,49 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       if (move) {
         const gameStatus = updateGameStatus(game);
-        const moveHistory = buildMoveHistory(game);
+        const newFen = game.fen();
+
+        // In online mode, append to existing history instead of rebuilding
+        let moveHistory: MoveHistoryItem[];
+        if (gameMode === 'online') {
+          const { moveHistory: existingHistory } = get();
+          moveHistory = [...existingHistory];
+
+          const totalMoves = game.history().length;
+          const moveNumber = Math.ceil(totalMoves / 2);
+          const isWhiteMove = totalMoves % 2 === 1;
+
+          if (isWhiteMove) {
+            // White's move - create new entry
+            moveHistory.push({
+              moveNumber,
+              white: move.san,
+              black: undefined,
+              fen: newFen,
+            });
+          } else {
+            // Black's move - update last entry
+            if (moveHistory.length > 0) {
+              const lastEntry = moveHistory[moveHistory.length - 1];
+              moveHistory[moveHistory.length - 1] = {
+                ...lastEntry,
+                black: move.san,
+                fen: newFen,
+              };
+            } else {
+              // Edge case: game started from custom position
+              moveHistory.push({
+                moveNumber,
+                white: '',
+                black: move.san,
+                fen: newFen,
+              });
+            }
+          }
+        } else {
+          // For non-online modes, rebuild history normally
+          moveHistory = buildMoveHistory(game);
+        }
 
         let winner: 'white' | 'black' | 'draw' | null = null;
         if (game.isCheckmate()) {
@@ -170,6 +230,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           selectedSquare: null,
           moveFrom: null,
           legalMoves: [],
+          moveCounter: get().moveCounter + 1, // Increment to trigger effects
+          lastLocalMove: { from, to, promotion }, // Store the move details
         });
 
         return true;
@@ -182,11 +244,29 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   selectSquare: (square) => {
-    const { game, selectedSquare } = get();
+    const { game, selectedSquare, gameMode, playerColor } = get();
 
     if (!square) {
       set({ selectedSquare: null, moveFrom: null, legalMoves: [] });
       return;
+    }
+
+    // In online mode, only allow selecting pieces of the player's color and when it's their turn
+    if (gameMode === 'online' && playerColor) {
+      const piece = game.get(square);
+
+      // If selecting a piece (not moving), check if it's the player's piece and their turn
+      if (!selectedSquare && piece) {
+        if (piece.color !== playerColor || game.turn() !== playerColor) {
+          return; // Ignore selection of opponent's pieces or when it's not player's turn
+        }
+      }
+
+      // If trying to move, check if it's still the player's turn
+      if (selectedSquare && game.turn() !== playerColor) {
+        set({ selectedSquare: null, moveFrom: null, legalMoves: [] });
+        return;
+      }
     }
 
     // If a square is already selected, try to move
@@ -221,6 +301,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastMoveEvaluation: null,
       showHint: false,
       hintMove: null,
+      moveCounter: 0, // Reset move counter
+      lastLocalMove: null, // Clear local move
     });
   },
 
@@ -265,16 +347,56 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setIsSearchingForMatch: (searching) => set({ isSearchingForMatch: searching }),
 
-  updateGameFromFen: (fen) => {
+  updateGameFromFen: (fen, moveNotation) => {
     const newGame = new Chess(fen);
     const gameStatus = updateGameStatus(newGame);
-    const moveHistory = buildMoveHistory(newGame);
+
+    // Get existing move history
+    const { moveHistory: existingHistory } = get();
+    let moveHistory = [...existingHistory];
+
+    // If we have move notation, append it to history
+    if (moveNotation) {
+      const totalMoves = newGame.history().length;
+      const moveNumber = Math.ceil(totalMoves / 2);
+      const isWhiteMove = totalMoves % 2 === 1;
+
+      if (isWhiteMove) {
+        // White's move - create new entry
+        moveHistory.push({
+          moveNumber,
+          white: moveNotation,
+          black: undefined,
+          fen: fen,
+        });
+      } else {
+        // Black's move - update last entry
+        if (moveHistory.length > 0) {
+          const lastEntry = moveHistory[moveHistory.length - 1];
+          moveHistory[moveHistory.length - 1] = {
+            ...lastEntry,
+            black: moveNotation,
+            fen: fen,
+          };
+        } else {
+          // Shouldn't happen, but handle edge case
+          moveHistory.push({
+            moveNumber,
+            white: '',
+            black: moveNotation,
+            fen: fen,
+          });
+        }
+      }
+    }
 
     set({
       game: newGame,
       gameStatus,
       moveHistory,
       currentMoveIndex: moveHistory.length - 1,
+      moveCounter: get().moveCounter + 1, // Increment to trigger effects
+      lastLocalMove: null, // Clear local move when receiving from server
     });
   },
 }));

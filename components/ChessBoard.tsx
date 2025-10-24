@@ -251,6 +251,18 @@ export default function ChessBoard() {
     ...rightClickedSquares,
   };
 
+  // Determine if dragging should be allowed
+  const isDraggingAllowed = (() => {
+    if (game.isGameOver() || isAiThinking) return false;
+
+    // In online mode, only allow dragging when it's the player's turn
+    if (gameMode === 'online' && playerColor) {
+      return game.turn() === playerColor;
+    }
+
+    return true;
+  })();
+
   return (
     <div className="w-full max-w-[600px] mx-auto">
       <Chessboard
@@ -268,7 +280,7 @@ export default function ChessBoard() {
           darkSquareStyle: { backgroundColor: theme.darkSquare },
           lightSquareStyle: { backgroundColor: theme.lightSquare },
           squareStyles: customSquareStyles,
-          allowDragging: !game.isGameOver() && !isAiThinking,
+          allowDragging: isDraggingAllowed,
         }}
       />
     </div>

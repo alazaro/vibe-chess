@@ -90,7 +90,10 @@ io.on('connection', (socket) => {
 
   socket.on('makeMove', ({ gameId, move }) => {
     const game = games.get(gameId);
-    if (!game) return;
+    if (!game) {
+      console.log(`Game ${gameId} not found`);
+      return;
+    }
 
     try {
       // Validate it's the player's turn
@@ -100,20 +103,29 @@ io.on('connection', (socket) => {
         game.players.white.id === playerId ? 'w' : game.players.black.id === playerId ? 'b' : null;
 
       if (playerColor !== currentTurn) {
-        console.log(`Player ${playerId} tried to move out of turn`);
+        console.log(`Player ${playerId} tried to move out of turn (current turn: ${currentTurn}, player color: ${playerColor})`);
         return;
       }
+
+      console.log(`Player ${playerId} (${playerColor}) making move:`, move);
 
       // Make the move
       const result = game.chess.move(move);
       if (result) {
-        // Broadcast to both players
+        const newFen = game.chess.fen();
+        console.log(`Move successful, new FEN: ${newFen}`);
+
+        // Broadcast to both players with both FEN and move notation
         io.to(game.players.white.id).emit('moveMade', {
-          fen: game.chess.fen(),
+          fen: newFen,
+          move: result.san, // Send move in SAN notation
         });
         io.to(game.players.black.id).emit('moveMade', {
-          fen: game.chess.fen(),
+          fen: newFen,
+          move: result.san, // Send move in SAN notation
         });
+
+        console.log(`Broadcasted move to both players`);
 
         // Check for game over
         if (game.chess.isGameOver()) {
@@ -134,6 +146,8 @@ io.on('connection', (socket) => {
           playerGames.delete(game.players.white.id);
           playerGames.delete(game.players.black.id);
         }
+      } else {
+        console.log(`Move failed: chess.js rejected the move`);
       }
     } catch (error) {
       console.error('Invalid move:', error);
