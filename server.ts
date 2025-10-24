@@ -2,10 +2,12 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { Chess } from 'chess.js';
 
+const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
+
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: CORS_ORIGIN,
     methods: ['GET', 'POST'],
   },
 });
@@ -185,4 +187,5 @@ io.on('connection', (socket) => {
 const PORT = parseInt(process.env.PORT || '3001', 10);
 httpServer.listen(PORT, () => {
   console.log(`Chess multiplayer server running on port ${PORT}`);
+  console.log(`CORS enabled for origin: ${CORS_ORIGIN}`);
 });
