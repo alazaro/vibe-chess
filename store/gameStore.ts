@@ -80,7 +80,7 @@ const updateGameStatus = (game: Chess): string => {
 };
 
 const buildMoveHistory = (game: Chess): MoveHistoryItem[] => {
-  const history = game.history();
+  const history = game.history({ verbose: true });
   const moveHistory: MoveHistoryItem[] = [];
 
   // If history is empty (e.g., game created from FEN), return empty array
@@ -88,30 +88,21 @@ const buildMoveHistory = (game: Chess): MoveHistoryItem[] => {
     return moveHistory;
   }
 
-  // Create a temporary game to track FENs
-  const tempGame = new Chess();
-
+  // Process moves in pairs (white + black)
   for (let i = 0; i < history.length; i += 2) {
     const moveNumber = Math.floor(i / 2) + 1;
     const whiteMove = history[i];
     const blackMove = history[i + 1];
 
-    // Play white's move to get FEN
-    tempGame.move(whiteMove);
-    const whiteFen = tempGame.fen();
-
-    // Play black's move if it exists
-    let blackFen = whiteFen;
-    if (blackMove) {
-      tempGame.move(blackMove);
-      blackFen = tempGame.fen();
-    }
+    // Get the FEN after the black move (or white move if no black move)
+    // We can get this from the move's 'after' field or from the current position
+    const fen = blackMove ? blackMove.after : whiteMove.after;
 
     moveHistory.push({
       moveNumber,
-      white: whiteMove,
-      black: blackMove,
-      fen: blackFen, // Store FEN after both moves (or just white if no black move)
+      white: whiteMove.san,
+      black: blackMove?.san,
+      fen: fen,
     });
   }
 
