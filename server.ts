@@ -182,7 +182,7 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT || '3001', 10);
 httpServer.listen(PORT, () => {
   console.log(`Chess multiplayer server running on port ${PORT}`);
 });
